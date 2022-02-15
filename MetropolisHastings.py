@@ -1,3 +1,6 @@
+import numpy as np
+import scipy as sp
+import matplotlib.pyplot as plt
 class MetropolisHastings:
   '''
   Authors (Please put your authorage here if you make changes):
