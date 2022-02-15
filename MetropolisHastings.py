@@ -1,6 +1,8 @@
+from IPython.display import clear_output
 import numpy as np
-import scipy as sp
 import matplotlib.pyplot as plt
+import scipy as sp
+
 class MetropolisHastings:
   '''
   Authors (Please put your authorage here if you make changes):
@@ -407,3 +409,39 @@ class MetropolisHastings:
 
   def get_log_level(self):
     return self.log_level
+
+if __name__ == '__main__':
+    # test program
+    from scipy.stats import norm as normal
+
+
+    def prior(position,mean,std):
+      meanie = normal(mean[0],std[0]).pdf(position[0])
+      stdie = normal(mean[1],std[1]).pdf(position[1])
+      return meanie*stdie
+    
+    def data(positions):
+      points = np.linspace(3,7,40)
+      return normal(positions[0],positions[1]).pdf(points)
+    
+    def proposal(means, stds):
+      return np.random.normal(means,stds)
+    
+    def likelihood(positions, data, error):
+      
+      return normal(positions[0], positions[1]).pdf(data).prod()
+    
+    a = MetropolisHastings([5,1],
+                           data,
+                           data([5,1]),
+                           [prior, [4,3], [2,4]],
+                           [proposal, [0,0], [0.001,.001]],
+                           likelihood,
+                           0,
+                           epochs = 30,
+                           burn_in = 500,
+                           #adaptive_delay = 100,
+                           adaptive = False,
+                           targeted_acceptance_rate=0.69,
+                           log_level=1)
+    a.run()
