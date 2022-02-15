@@ -407,3 +407,27 @@ class MetropolisHastings:
 
   def get_log_level(self):
     return self.log_level
+
+  def set_logs(self,logs):
+    self.logs = logs
+
+  def get_logs(self):
+    return self.logs
+
+  def set_targeted_acceptance_rate(self, targeted_acceptance_rate):
+    self.targeted_acceptance_rate = targeted_acceptance_rate
+
+  def get_targeted_acceptance_rate(self):
+    return self.targeted_acceptance_rate
+
+  def set_adaptive_delay(self, adaptive_delay):
+    self.adaptive_delay = adaptive_delay
+
+  def get_adaptive_delay(self):
+    return self.adaptive_delay
+
+  def set_adaptive_multiplier(self, adaptive_multiplier):
+    self.adaptive_multiplier = adaptive_multiplier
+    
+  def get_adaptive_multiplier(self):
+    return self.adaptive_multiplier
