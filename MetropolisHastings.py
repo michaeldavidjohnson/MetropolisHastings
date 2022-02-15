@@ -177,7 +177,7 @@ class MetropolisHastings:
         ax.grid('on')
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
-        ax.set_title(title)
+        ax.set_title(title, loc = 'left') #, fontdict = {'fontweight' : 'demi'})
         if legend:
             ax.legend(**legend_args)
 
@@ -220,12 +220,6 @@ class MetropolisHastings:
         None, None if not return_fig
 
         '''
-        '''
-        Return a trace plot for each parameter of interest or a specific parameter parameter_indexes
-    
-        IF parameter_indexes == None plot all as subplots
-        otherwise plot parameter parameter_indexes
-        '''
         if type(parameter_indexes) == int:
             parameter_indexes = [parameter_indexes]
             if type(parameter_names) == str:
@@ -243,6 +237,7 @@ class MetropolisHastings:
             raise ValueError("Invalid parameter_index passed to plot_traces - index greater than number of parameters (%d)" % len(self.initial_parameters))
         
         # sort out axes
+        num_cols, num_rows, fig = 1, 1, None
         if (n > 1) and ax:
           raise ValueError("Cannot use existing axis if plotting more than one parameter")
         if not ax:
@@ -253,8 +248,119 @@ class MetropolisHastings:
             else:
               num_cols = 1
               num_rows = n
-          else:
-            num_cols, num_rows = 1, 1
+          fig, ax = plt.subplots(num_rows, num_cols, sharex = True)
+          
+        axs = np.array(ax).flatten() # axs numbers from L-R, T-B
+        
+        # plot parameter store values
+        parameter_store_by_index = np.array(self.parameter_store).T
+        
+        if self.epochs < 1000:
+            marker = 'x'
+        else:
+            marker = None
+        
+        j = -1
+        for p in parameter_indexes:
+            j += 1
+            axs[j].plot(parameter_store_by_index[p], 
+                        c = 'C' + str(j), 
+                        marker = marker, markersize = 5,
+                        label = parameter_names[j])
+            if j >= (len(parameter_indexes) - num_cols):
+                self._sort_ax(axs[j], x_label = 'epoch', y_label = 'value',
+                        title = parameter_names[j], legend = False)
+            else:
+                self._sort_ax(axs[j], y_label = 'value',
+                        title = parameter_names[j], legend = False)
+        
+        if fig:
+            fig.suptitle(title)
+            fig.tight_layout()
+        
+        if return_fig:
+            return fig, axs
+        else:
+            return None, None
+
+  
+  def plot_hists(self, parameter_indexes = [], parameter_names = [], 
+                    n_bins = None,
+                    ax = None, max_rows = 3, title = 'Posterior Distributions of Parameters',
+                    return_fig = False):
+        '''
+        Return the histograms for each parameter of interest or for a specific list of parameter indices
+
+
+        Parameters
+        ----------
+        self : MetropolisHastings Object
+            Should have run before attempting plot
+        parameter_indexes : list, optional
+            List of parameters to plot (labelled by index). The default is [].
+            If empty plots all
+        parameter_names : list, optional
+            Names of parameters to plot (in order of indexes). The default is [].
+            If empty labels by index
+        n_bins : int, optional
+            Number of bins for histogram.
+            If None uses epochs * 0.2
+        ax : matplotlib.axes._subplots.AxesSubplot, optional
+            Axis to add graph to. The default is None.
+            If None creates new figure and axis.
+            Cannot be used if number of parameters to plot is > 1
+        max_rows : int, optional
+            Maximum number of rows in a figure before creating columns. 
+            The default is 3.
+        title : string, optional
+            Title for plot.
+        return_fig : bool, optional
+            Switch for whether fig, axs are returned. The default is False.
+
+        Raises
+        ------
+        ValueError
+
+        Returns
+        -------
+        fig, axs if return_fig
+        None, None if not return_fig
+
+        '''
+        
+        # input validation/sorting
+        
+        if type(parameter_indexes) == int:
+            parameter_indexes = [parameter_indexes]
+            if type(parameter_names) == str:
+                parameter_names = [parameter_names]  
+        elif len(parameter_indexes) == 0:
+            parameter_indexes = range(len(self.initial_parameters))
+        n = len(parameter_indexes)
+        
+        if len(parameter_names) == 0:
+            parameter_names = ['param ' + str(j) for j in parameter_indexes]
+        elif len(parameter_names) != len(parameter_indexes):
+            raise ValueError("Invalid parameter_names passed to plot_hists: should be same length as parameter list (parameter_indexes)")
+        
+        if any(parameter_indexes) >= len(self.initial_parameters):
+            raise ValueError("Invalid parameter_index passed to plot_hists - index greater than number of parameters (%d)" % len(self.initial_parameters))
+        
+        if not n_bins:
+            n_bins = int(self.epochs * 0.2)
+        
+        # sort out axes
+        num_cols, num_rows, fig = 1, 1, None
+        if (n > 1) and ax:
+          raise ValueError("Cannot use existing axis if plotting more than one parameter")
+        if not ax:
+          if n > 1:
+            if n > max_rows:
+              num_cols = int(np.ceil(n/max_rows))
+              num_rows = max_rows
+            else:
+              num_cols = 1
+              num_rows = n
           fig, ax = plt.subplots(num_rows, num_cols)
           
         axs = np.array(ax).flatten() # axs numbers from L-R, T-B
@@ -265,33 +371,19 @@ class MetropolisHastings:
         j = -1
         for p in parameter_indexes:
             j += 1
-            axs[j].plot(parameter_store_by_index[p], c = 'C' + str(j), label = parameter_names[j])
-            if j >= (len(parameter_indexes) - num_cols):
-                self._sort_ax(axs[j], x_label = 'epoch', 
-                        y_label = parameter_names[j], legend = False)
-            else:
-                self._sort_ax(axs[j], y_label = parameter_names[j], legend = False)
+            axs[j].hist(parameter_store_by_index[p], density = True, bins = n_bins, 
+                        color = 'C' + str(j), alpha = 0.8)
+            self._sort_ax(axs[j], x_label = 'value', 
+                    y_label = 'count', title = parameter_names[j], legend = False)
         
-        fig.suptitle(title)
-        fig.tight_layout()
+        if fig:
+            fig.suptitle(title)
+            fig.tight_layout()
         
         if return_fig:
             return fig, axs
         else:
             return None, None
-
-  def plot_hists(self, i = None):
-    '''
-    Return the histograms for each parameter of interest or for a specific parameter i
-
-    Histogram of parameter store
-
-    (proxy for probbably distr.)
-
-    '''
-    plt.hist(np.array(self.parameter_store).T[0][500:],density=True,bins=100)
-    plt.plot(np.linspace(3,8,100),data(5))
-    return 0
 
   def plot_corner(self, i = None):
     '''
@@ -546,10 +638,13 @@ if __name__ == '__main__':
                            log_level=1)
     a.run()
 
-        
-        
-    
 
-    fig, axs = a.plot_traces(parameter_indexes = 0)
 
-    
+    a.plot_traces()
+    fig, axs = a.plot_hists(return_fig = True)
+
+    # plot trace and histogram on same figure
+    fig, axs = plt.subplots(1, 2)
+    a.plot_traces(0, '', ax = axs[0])
+    a.plot_hists(0, '', ax = axs[1])
+    fig.tight_layout()
