@@ -171,14 +171,114 @@ class MetropolisHastings:
 
     print("Running has finished")
 
-  def plot_traces(self, i = None):
-    '''
-    Return a trace plot for each parameter of interest or a specific parameter i
+        
+  def _sort_ax(self, ax, x_label = '', y_label = '', title = '', legend = True, **legend_args):
+      # utility function for plots
+        ax.grid('on')
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title(title)
+        if legend:
+            ax.legend(**legend_args)
 
-    IF i == None plot all as subplots
-    otherwise plot parameter i
-    '''
-    return 0 
+  def plot_traces(self, parameter_indexes = [], parameter_names = [], 
+                    ax = None, max_rows = 3, title = 'Parameter evolution',
+                    return_fig = False):
+        '''
+        Return a trace plot for each parameter of interest or a specific list of parameter indices
+
+
+        Parameters
+        ----------
+        self : MetropolisHastings Object
+            Should have run before attempting plot
+        parameter_indexes : list, optional
+            List of parameters to plot (labelled by index). The default is [].
+            If empty plots all
+        parameter_names : list, optional
+            Names of parameters to plot (in order of indexes). The default is [].
+            If empty labels by index
+        ax : matplotlib.axes._subplots.AxesSubplot, optional
+            Axis to add graph to. The default is None.
+            If None creates new figure and axis.
+            Cannot be used if number of parameters to plot is > 1
+        max_rows : int, optional
+            Maximum number of rows in a figure before creating columns. 
+            The default is 3.
+        title : string, optional
+            Title for plot.
+        return_fig : bool, optional
+            Switch for whether fig, axs are returned. The default is False.
+
+        Raises
+        ------
+        ValueError
+
+        Returns
+        -------
+        fig, axs if return_fig
+        None, None if not return_fig
+
+        '''
+        '''
+        Return a trace plot for each parameter of interest or a specific parameter parameter_indexes
+    
+        IF parameter_indexes == None plot all as subplots
+        otherwise plot parameter parameter_indexes
+        '''
+        if type(parameter_indexes) == int:
+            parameter_indexes = [parameter_indexes]
+            if type(parameter_names) == str:
+                parameter_names = [parameter_names]  
+        elif len(parameter_indexes) == 0:
+            parameter_indexes = range(len(self.initial_parameters))
+        n = len(parameter_indexes)
+        
+        if len(parameter_names) == 0:
+            parameter_names = ['param ' + str(j) for j in parameter_indexes]
+        elif len(parameter_names) != len(parameter_indexes):
+            raise ValueError("Invalid parameter_names passed to plot_traces: should be same length as parameter list (parameter_indexes)")
+        
+        if any(parameter_indexes) >= len(self.initial_parameters):
+            raise ValueError("Invalid parameter_index passed to plot_traces - index greater than number of parameters (%d)" % len(self.initial_parameters))
+        
+        # sort out axes
+        if (n > 1) and ax:
+          raise ValueError("Cannot use existing axis if plotting more than one parameter")
+        if not ax:
+          if n > 1:
+            if n > max_rows:
+              num_cols = int(np.ceil(n/max_rows))
+              num_rows = max_rows
+            else:
+              num_cols = 1
+              num_rows = n
+          else:
+            num_cols, num_rows = 1, 1
+          fig, ax = plt.subplots(num_rows, num_cols)
+          
+        axs = np.array(ax).flatten() # axs numbers from L-R, T-B
+        
+        # plot parameter store values
+        parameter_store_by_index = np.array(self.parameter_store).T
+        
+        j = -1
+        for p in parameter_indexes:
+            j += 1
+            axs[j].plot(parameter_store_by_index[p], c = 'C' + str(j), label = parameter_names[j])
+            if j >= (len(parameter_indexes) - num_cols):
+                self._sort_ax(axs[j], x_label = 'epoch', 
+                        y_label = parameter_names[j], legend = False)
+            else:
+                self._sort_ax(axs[j], y_label = parameter_names[j], legend = False)
+        
+        fig.suptitle(title)
+        fig.tight_layout()
+        
+        if return_fig:
+            return fig, axs
+        else:
+            return None, None
 
   def plot_hists(self, i = None):
     '''
@@ -413,8 +513,8 @@ class MetropolisHastings:
 if __name__ == '__main__':
     # test program
     from scipy.stats import norm as normal
-
-
+    
+    print("Initialising")
     def prior(position,mean,std):
       meanie = normal(mean[0],std[0]).pdf(position[0])
       stdie = normal(mean[1],std[1]).pdf(position[1])
@@ -430,7 +530,7 @@ if __name__ == '__main__':
     def likelihood(positions, data, error):
       
       return normal(positions[0], positions[1]).pdf(data).prod()
-    
+  
     a = MetropolisHastings([5,1],
                            data,
                            data([5,1]),
@@ -445,3 +545,11 @@ if __name__ == '__main__':
                            targeted_acceptance_rate=0.69,
                            log_level=1)
     a.run()
+
+        
+        
+    
+
+    fig, axs = a.plot_traces(parameter_indexes = 0)
+
+    
