@@ -1,3 +1,4 @@
+import corner as corner
 from IPython.display import clear_output
 import numpy as np
 import matplotlib.pyplot as plt
@@ -271,15 +272,16 @@ class MetropolisHastings:
             axs[j].plot(range(self.burn_in+1), parameter_store_by_index[p][:self.burn_in+1], 
                         c = 'gray',
                         marker = marker, markersize = 5,
-                        label = parameter_names[j])
+                        label = 'pre burn-in')
             axs[j].plot(range(self.burn_in, len(parameter_store_by_index[p])), parameter_store_by_index[p][self.burn_in:], 
                         c = 'C' + str(j), 
                         marker = marker, markersize = 5,
                         label = parameter_names[j])
             y_lim = axs[j].get_ylim()
-            axs[j].plot([self.burn_in, self.burn_in], y_lim,
+            if self.burn_in > 0:
+                axs[j].plot([self.burn_in, self.burn_in], y_lim,
                         c = 'k', lw = 0.8, ls = '--',
-                        label = 'burn in')
+                        label = 'burn-in cutoff')
             #axs[j].annotate('burn in', xy = [self.burn_in*1.05, y_lim[0] + 0.9 * (y_lim[1]-y_lim[0])])
             axs[j].set_ylim(y_lim)
             if j >= (len(parameter_indexes) - num_cols):
@@ -405,7 +407,24 @@ class MetropolisHastings:
     plots covariances between each histogram
 
     uses module corner.py
+    citation:
+     @article{corner,
+      doi = {10.21105/joss.00024},
+      url = {https://doi.org/10.21105/joss.00024},
+      year  = {2016},
+      month = {jun},
+      publisher = {The Open Journal},
+      volume = {1},
+      number = {2},
+      pages = {24},
+      author = {Daniel Foreman-Mackey},
+      title = {corner.py: Scatterplot matrices in Python},
+      journal = {The Journal of Open Source Software}
+    }
     '''
+    parameter_store_by_index = np.array(self.parameter_store).T
+
+    fig = corner.corner(parameter_store_by_index[0])
   
   def move(self):
     '''
@@ -448,7 +467,7 @@ class MetropolisHastings:
       
     if self.logs:
       criteria = proposed_posterior - initial_posterior
-      monte_caelo = np.log(np.ranfom.uniform)
+      monte_carlo = np.log(np.random.uniform())
 
     if self.log_level == 1:
       print(f"{proposed_position}")
@@ -497,6 +516,7 @@ class MetropolisHastings:
         self.parameter_store = import_df.values
         self.epochs = len(import_df)
         self.initial_parameters = self.parameter_store[0]
+        self.burn_in = 0
         
         print("Loaded")
 
@@ -666,42 +686,52 @@ if __name__ == '__main__':
     # test program
     from scipy.stats import norm as normal
     
+    load_from_file = False
+    
     print("Initialising")
     def prior(position,mean,std):
-      meanie = normal(mean[0],std[0]).pdf(position[0])
-      stdie = normal(mean[1],std[1]).pdf(position[1])
-      return meanie*stdie
+      meanie = sp.stats.uniform(0,5).pdf(position[0])
+      stdie = sp.stats.uniform(0,3).pdf(position[1])
+      return meanie * stdie
     
     def data(positions):
-      points = np.linspace(3,7,40)
+      points = np.linspace(1,5,100)
       return normal(positions[0],positions[1]).pdf(points)
     
     def proposal(means, stds):
       return np.random.normal(means,stds)
     
     def likelihood(positions, data, error):
-      
-      return normal(positions[0], positions[1]).pdf(data).prod()
-  
-    a = MetropolisHastings([5,1],
+        return np.prod(1/np.sqrt(positions[1])*np.exp(-0.5*(data - positions[0])))
+       
+
+    vals = data([3,1])
+    likelihood([3,1],vals,0)
+    plt.plot(data([3,1]))
+    a = MetropolisHastings([3,2],
                            data,
-                           data([5,1]),
-                           [prior, [4,3], [2,4]],
-                           [proposal, [0,0], [0.001,.001]],
+                           data([3,1]),
+                           [prior, [1,1], [2,2]],
+                           [proposal, [0,0], [0,0.3]],
                            likelihood,
                            0,
-                           epochs = 5000,
+                           epochs = 3000,
                            burn_in = 50,
                            #adaptive_delay = 100,
                            adaptive = False,
+                           logs = False,
                            targeted_acceptance_rate=0.69,
                            log_level=1)
-    a.run()
-
-
+    
+    if load_from_file:
+        file_name = 'MetropolisHastings_20220216-111611.csv'
+        a.load_parameter_store(file_name)
+        
+    else:
+        a.run()
 
     a.plot_traces(show_markers = False)
-    fig, axs = a.plot_hists(return_fig = True)
+    fig, axs = a.plot_hists(return_fig = True, n_bins = 20)
 
     # plot trace and histogram on same figure
     fig, axs = plt.subplots(1, 2)
@@ -709,4 +739,32 @@ if __name__ == '__main__':
     a.plot_hists(0, '', ax = axs[1])
     fig.tight_layout()
     
-
+    def plot_corner(a, i = None, return_fig = False):
+        '''
+        plots covariances between each histogram
+    
+        uses module corner.py
+        citation:
+         @article{corner,
+          doi = {10.21105/joss.00024},
+          url = {https://doi.org/10.21105/joss.00024},
+          year  = {2016},
+          month = {jun},
+          publisher = {The Open Journal},
+          volume = {1},
+          number = {2},
+          pages = {24},
+          author = {Daniel Foreman-Mackey},
+          title = {corner.py: Scatterplot matrices in Python},
+          journal = {The Journal of Open Source Software}
+        }
+        '''
+        parameter_store_by_index = np.array(a.parameter_store).T
+    
+        fig = corner.corner(a.parameter_store)
+        
+        if return_fig:
+            return fig
+        else:
+            return None
+    
