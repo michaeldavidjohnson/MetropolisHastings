@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import scipy as sp
+import time as time
 
 class MetropolisHastings:
   '''
@@ -402,29 +403,70 @@ class MetropolisHastings:
         else:
             return None, None
 
-  def plot_corner(self, i = None):
-    '''
-    plots covariances between each histogram
+  def plot_corner(self, i = None, n_bins = None, grid = False, 
+                    show_ylabel = False, hist_same_scale = False,
+                    return_fig = False):
+        '''
+        plots covariances between each histogram
+    
+        uses module corner.py
+        citation:
+         @article{corner,
+          doi = {10.21105/joss.00024},
+           url = {https://doi.org/10.21105/joss.00024},
+          year  = {2016},
+          month = {jun},
+          publisher = {The Open Journal},
+          volume = {1},
+          number = {2},
+          pages = {24},
+          author = {Daniel Foreman-Mackey},
+          title = {corner.py: Scatterplot matrices in Python},
+          journal = {The Journal of Open Source Software}
+        }
+        '''
+        if not n_bins:
+            n_bins = self.epochs/10
+            
+        parameter_store_by_index = pd.DataFrame(self.parameter_store)
+    
+        fig = corner.corner(parameter_store_by_index, bins = n_bins, 
+                            show_titles = False, plot_contours = False,
+                            fill_contours = True)
+        
+        n = len(self.initial_parameters)
+        axs = np.array(fig.axes).reshape((n,n))
+        if grid:
+            for ax in axs.flatten():
+                ax.grid()
+                
+        if show_ylabel:
+            axs[0][0].set_ylabel('count')                
+            for i in range(n):
+                axs[i][i].set_yscale('linear')
+                if hist_same_scale and (i != 0):
+                    axs[i][i].set_yticklabels([])        
+                
+        if hist_same_scale:
+            min_ylim = 1000
+            max_ylim = 0
+            for i in range(n):
+                ylim = axs[i][i].get_ylim()
+                if ylim[0] < min_ylim:
+                    min_ylim = ylim[0]
+                if ylim[1] > max_ylim:
+                    max_ylim = ylim[1]
+            for i in range(n):
+                axs[i][i].set_ylim(min_ylim, max_ylim)    
 
-    uses module corner.py
-    citation:
-     @article{corner,
-      doi = {10.21105/joss.00024},
-      url = {https://doi.org/10.21105/joss.00024},
-      year  = {2016},
-      month = {jun},
-      publisher = {The Open Journal},
-      volume = {1},
-      number = {2},
-      pages = {24},
-      author = {Daniel Foreman-Mackey},
-      title = {corner.py: Scatterplot matrices in Python},
-      journal = {The Journal of Open Source Software}
-    }
-    '''
-    parameter_store_by_index = np.array(self.parameter_store).T
-
-    fig = corner.corner(parameter_store_by_index[0])
+        if show_ylabel and not hist_same_scale:            
+            fig.subplots_adjust(left=0.125, bottom=0.1, right=0.95, top=0.95, wspace=0.2, hspace=0.075)
+        elif show_ylabel:
+            fig.subplots_adjust(left=0.125, bottom=0.1, right=0.95, top=0.95, wspace=0.075, hspace=0.075)
+        
+        if return_fig:
+            return fig
+        return None
   
   def move(self):
     '''
@@ -686,7 +728,7 @@ if __name__ == '__main__':
     # test program
     from scipy.stats import norm as normal
     
-    load_from_file = False
+    load_from_file = True
     
     print("Initialising")
     def prior(position,mean,std):
@@ -712,10 +754,10 @@ if __name__ == '__main__':
                            data,
                            data([3,1]),
                            [prior, [1,1], [2,2]],
-                           [proposal, [0,0], [0,0.3]],
+                           [proposal, [0.4,0.3], [0.4,0.3]],
                            likelihood,
                            0,
-                           epochs = 3000,
+                           epochs = 300,
                            burn_in = 50,
                            #adaptive_delay = 100,
                            adaptive = False,
@@ -739,32 +781,5 @@ if __name__ == '__main__':
     a.plot_hists(0, '', ax = axs[1])
     fig.tight_layout()
     
-    def plot_corner(a, i = None, return_fig = False):
-        '''
-        plots covariances between each histogram
-    
-        uses module corner.py
-        citation:
-         @article{corner,
-          doi = {10.21105/joss.00024},
-          url = {https://doi.org/10.21105/joss.00024},
-          year  = {2016},
-          month = {jun},
-          publisher = {The Open Journal},
-          volume = {1},
-          number = {2},
-          pages = {24},
-          author = {Daniel Foreman-Mackey},
-          title = {corner.py: Scatterplot matrices in Python},
-          journal = {The Journal of Open Source Software}
-        }
-        '''
-        parameter_store_by_index = np.array(a.parameter_store).T
-    
-        fig = corner.corner(a.parameter_store)
-        
-        if return_fig:
-            return fig
-        else:
-            return None
+    a.plot_corner(n_bins = 50, grid = False, show_ylabel = False, hist_same_scale = False) # default corner.py behaviour
     
