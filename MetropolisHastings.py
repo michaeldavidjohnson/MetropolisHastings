@@ -1,6 +1,8 @@
+import corner as corner
 from IPython.display import clear_output
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 import scipy as sp
 
 class MetropolisHastings:
@@ -183,6 +185,7 @@ class MetropolisHastings:
 
   def plot_traces(self, parameter_indexes = [], parameter_names = [], 
                     ax = None, max_rows = 3, title = 'Parameter evolution',
+                    show_markers = None,
                     return_fig = False):
         '''
         Return a trace plot for each parameter of interest or a specific list of parameter indices
@@ -207,6 +210,9 @@ class MetropolisHastings:
             The default is 3.
         title : string, optional
             Title for plot.
+        show_markers : bool, optional
+            Defines whether to show markers on scatter plot
+            If None only shows for small number of epochs.
         return_fig : bool, optional
             Switch for whether fig, axs are returned. The default is False.
 
@@ -255,7 +261,7 @@ class MetropolisHastings:
         # plot parameter store values
         parameter_store_by_index = np.array(self.parameter_store).T
         
-        if self.epochs < 1000:
+        if ((show_markers is None) and (self.epochs < 200)) or (show_markers == True):
             marker = 'x'
         else:
             marker = None
@@ -263,10 +269,21 @@ class MetropolisHastings:
         j = -1
         for p in parameter_indexes:
             j += 1
-            axs[j].plot(parameter_store_by_index[p], 
+            axs[j].plot(range(self.burn_in+1), parameter_store_by_index[p][:self.burn_in+1], 
+                        c = 'gray',
+                        marker = marker, markersize = 5,
+                        label = 'pre burn-in')
+            axs[j].plot(range(self.burn_in, len(parameter_store_by_index[p])), parameter_store_by_index[p][self.burn_in:], 
                         c = 'C' + str(j), 
                         marker = marker, markersize = 5,
                         label = parameter_names[j])
+            y_lim = axs[j].get_ylim()
+            if self.burn_in > 0:
+                axs[j].plot([self.burn_in, self.burn_in], y_lim,
+                        c = 'k', lw = 0.8, ls = '--',
+                        label = 'burn-in cutoff')
+            #axs[j].annotate('burn in', xy = [self.burn_in*1.05, y_lim[0] + 0.9 * (y_lim[1]-y_lim[0])])
+            axs[j].set_ylim(y_lim)
             if j >= (len(parameter_indexes) - num_cols):
                 self._sort_ax(axs[j], x_label = 'epoch', y_label = 'value',
                         title = parameter_names[j], legend = False)
@@ -372,7 +389,7 @@ class MetropolisHastings:
         for p in parameter_indexes:
             j += 1
             axs[j].hist(parameter_store_by_index[p], density = True, bins = n_bins, 
-                        color = 'C' + str(j), alpha = 0.8)
+                        color = 'C' + str(j), alpha = 0.8, edgecolor = 'C' + str(j))
             self._sort_ax(axs[j], x_label = 'value', 
                     y_label = 'count', title = parameter_names[j], legend = False)
         
@@ -390,7 +407,24 @@ class MetropolisHastings:
     plots covariances between each histogram
 
     uses module corner.py
+    citation:
+     @article{corner,
+      doi = {10.21105/joss.00024},
+      url = {https://doi.org/10.21105/joss.00024},
+      year  = {2016},
+      month = {jun},
+      publisher = {The Open Journal},
+      volume = {1},
+      number = {2},
+      pages = {24},
+      author = {Daniel Foreman-Mackey},
+      title = {corner.py: Scatterplot matrices in Python},
+      journal = {The Journal of Open Source Software}
+    }
     '''
+    parameter_store_by_index = np.array(self.parameter_store).T
+
+    fig = corner.corner(parameter_store_by_index[0])
   
   def move(self):
     '''
@@ -433,7 +467,7 @@ class MetropolisHastings:
       
     if self.logs:
       criteria = proposed_posterior - initial_posterior
-      monte_caelo = np.log(np.ranfom.uniform)
+      monte_carlo = np.log(np.random.uniform())
 
     if self.log_level == 1:
       print(f"{proposed_position}")
@@ -465,6 +499,26 @@ class MetropolisHastings:
       print(f"Acceptance: {self.acceptance}")
       print(f"Criteria: {criteria}")
       print(f"Monte-Carlo: {monte_carlo}")
+      
+  def save(self, file_name = None):        
+        if not file_name:
+            file_name = 'MetropolisHastings_' + pd.to_datetime('today').strftime('%Y%m%d-%H%M%S') + '.csv'
+        
+        export_df = pd.DataFrame(self.parameter_store, 
+                                 columns = ['param %d' % i for i in range(len(self.initial_parameters))])
+        export_df.to_csv(file_name)
+        
+        print("Saved to %s" % file_name)
+        
+  def load_parameter_store(self, file_name):
+        import_df = pd.read_csv(file_name, index_col = 0)
+        
+        self.parameter_store = import_df.values
+        self.epochs = len(import_df)
+        self.initial_parameters = self.parameter_store[0]
+        self.burn_in = 0
+        
+        print("Loaded")
 
   #Getters and setters, these are probably never going to be used, but it 
   #could be useful i.e. changing prior std through the Metropolis-Hastings.
@@ -632,45 +686,85 @@ if __name__ == '__main__':
     # test program
     from scipy.stats import norm as normal
     
+    load_from_file = False
+    
     print("Initialising")
     def prior(position,mean,std):
-      meanie = normal(mean[0],std[0]).pdf(position[0])
-      stdie = normal(mean[1],std[1]).pdf(position[1])
-      return meanie*stdie
+      meanie = sp.stats.uniform(0,5).pdf(position[0])
+      stdie = sp.stats.uniform(0,3).pdf(position[1])
+      return meanie * stdie
     
     def data(positions):
-      points = np.linspace(3,7,40)
+      points = np.linspace(1,5,100)
       return normal(positions[0],positions[1]).pdf(points)
     
     def proposal(means, stds):
       return np.random.normal(means,stds)
     
     def likelihood(positions, data, error):
-      
-      return normal(positions[0], positions[1]).pdf(data).prod()
-  
-    a = MetropolisHastings([5,1],
+        return np.prod(1/np.sqrt(positions[1])*np.exp(-0.5*(data - positions[0])))
+       
+
+    vals = data([3,1])
+    likelihood([3,1],vals,0)
+    plt.plot(data([3,1]))
+    a = MetropolisHastings([3,2],
                            data,
-                           data([5,1]),
-                           [prior, [4,3], [2,4]],
-                           [proposal, [0,0], [0.001,.001]],
+                           data([3,1]),
+                           [prior, [1,1], [2,2]],
+                           [proposal, [0,0], [0,0.3]],
                            likelihood,
                            0,
-                           epochs = 30,
-                           burn_in = 500,
+                           epochs = 3000,
+                           burn_in = 50,
                            #adaptive_delay = 100,
                            adaptive = False,
+                           logs = False,
                            targeted_acceptance_rate=0.69,
                            log_level=1)
-    a.run()
+    
+    if load_from_file:
+        file_name = 'MetropolisHastings_20220216-111611.csv'
+        a.load_parameter_store(file_name)
+        
+    else:
+        a.run()
 
-
-
-    a.plot_traces()
-    fig, axs = a.plot_hists(return_fig = True)
+    a.plot_traces(show_markers = False)
+    fig, axs = a.plot_hists(return_fig = True, n_bins = 20)
 
     # plot trace and histogram on same figure
     fig, axs = plt.subplots(1, 2)
     a.plot_traces(0, '', ax = axs[0])
     a.plot_hists(0, '', ax = axs[1])
     fig.tight_layout()
+    
+    def plot_corner(a, i = None, return_fig = False):
+        '''
+        plots covariances between each histogram
+    
+        uses module corner.py
+        citation:
+         @article{corner,
+          doi = {10.21105/joss.00024},
+          url = {https://doi.org/10.21105/joss.00024},
+          year  = {2016},
+          month = {jun},
+          publisher = {The Open Journal},
+          volume = {1},
+          number = {2},
+          pages = {24},
+          author = {Daniel Foreman-Mackey},
+          title = {corner.py: Scatterplot matrices in Python},
+          journal = {The Journal of Open Source Software}
+        }
+        '''
+        parameter_store_by_index = np.array(a.parameter_store).T
+    
+        fig = corner.corner(a.parameter_store)
+        
+        if return_fig:
+            return fig
+        else:
+            return None
+    
