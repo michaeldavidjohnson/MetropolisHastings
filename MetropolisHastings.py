@@ -391,8 +391,7 @@ class MetropolisHastings:
         else:
             return None, None
 
-
-  def plot_corner(self, i = None, n_bins = None, grid = False, 
+    def plot_corner(self, i = None, n_bins = None, grid = False, 
                     show_ylabel = False, hist_same_scale = False,
                     return_fig = False):
         '''
