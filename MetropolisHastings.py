@@ -248,7 +248,7 @@ class MetropolisHastings:
                 else:
                     num_cols = 1
                     num_rows = n
-            fig, ax = plt.subplots(num_rows, num_cols, sharex = True)
+            fig, ax = plt.subplots(num_rows, num_cols, sharex = True, figsize = (15, 10))
           
         axs = np.array(ax).flatten() # axs numbers from L-R, T-B
         
@@ -367,7 +367,7 @@ class MetropolisHastings:
                 else:
                     num_cols = 1
                     num_rows = n
-            fig, ax = plt.subplots(num_rows, num_cols)
+            fig, ax = plt.subplots(num_rows, num_cols, figsize = (15, 10))
           
         axs = np.array(ax).flatten() # axs numbers from L-R, T-B
         
@@ -768,7 +768,7 @@ if __name__ == '__main__':
     fig, axs = a.plot_hists(return_fig = True, n_bins = 20)
 
     # plot trace and histogram on same figure
-    fig, axs = plt.subplots(1, 2)
+    fig, axs = plt.subplots(1, 2, figsize = (15,10))
     a.plot_traces(0, '', ax = axs[0])
     a.plot_hists(0, '', ax = axs[1])
     fig.tight_layout()
