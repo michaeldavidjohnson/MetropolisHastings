@@ -248,7 +248,7 @@ class MetropolisHastings:
                 else:
                     num_cols = 1
                     num_rows = n
-            fig, ax = plt.subplots(num_rows, num_cols, sharex = True)
+            fig, ax = plt.subplots(num_rows, num_cols, sharex = True, figsize = (15, 10))
           
         axs = np.array(ax).flatten() # axs numbers from L-R, T-B
         
@@ -367,7 +367,7 @@ class MetropolisHastings:
                 else:
                     num_cols = 1
                     num_rows = n
-            fig, ax = plt.subplots(num_rows, num_cols)
+            fig, ax = plt.subplots(num_rows, num_cols, figsize = (15, 10))
           
         axs = np.array(ax).flatten() # axs numbers from L-R, T-B
         
@@ -393,6 +393,7 @@ class MetropolisHastings:
 
     def plot_corner(self, i = None, n_bins = None, grid = False, 
                     show_ylabel = False, hist_same_scale = False,
+                    remove_burn_in = True,
                     return_fig = False):
         '''
         plots covariances between each histogram
@@ -417,7 +418,10 @@ class MetropolisHastings:
             n_bins = self.epochs/10
             
         parameter_store_by_index = pd.DataFrame(self.parameter_store)
-    
+        
+        if remove_burn_in:
+            parameter_store_by_index = parameter_store_by_index.iloc[self.burn_in:,:]
+        
         fig = corner.corner(parameter_store_by_index, bins = n_bins, 
                             show_titles = False, plot_contours = False,
                             fill_contours = True)
@@ -718,7 +722,7 @@ if __name__ == '__main__':
     # test program
     from scipy.stats import norm as normal
     
-    load_from_file = True
+    load_from_file = False
     
     print("Initialising")
     def prior(position,mean,std):
@@ -763,7 +767,7 @@ if __name__ == '__main__':
     fig, axs = a.plot_hists(return_fig = True, n_bins = 20)
 
     # plot trace and histogram on same figure
-    fig, axs = plt.subplots(1, 2)
+    fig, axs = plt.subplots(1, 2, figsize = (15,10))
     a.plot_traces(0, '', ax = axs[0])
     a.plot_hists(0, '', ax = axs[1])
     fig.tight_layout()
