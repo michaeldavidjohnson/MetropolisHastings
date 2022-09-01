@@ -1,11 +1,12 @@
-
 from IPython.display import clear_output
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import scipy as sp
+from scipy.io import savemat
+from scipy.stats import norm as normal
 import time as time
-
+import corner as corner
 
 class MetropolisHastings:
     '''
@@ -17,7 +18,8 @@ class MetropolisHastings:
                    likelihood_function, measurement_error, epochs, 
                    burn_in=False, return_MAP=False, adaptive=False, adaptive_delay=False,
                    extra_conditions = False, log_level = False, logs = False,
-                   targeted_acceptance_rate = 0.2, adaptive_multiplier = 1.02, external_model = True):
+                   targeted_acceptance_rate = 0.2, adaptive_multiplier = 1.02, external_model = True,
+                   optimizer = False):
         '''
         Init function for a general Metropolis Hastings sampler. Scalable for 
         n parameter estimation.
@@ -39,6 +41,7 @@ class MetropolisHastings:
         logs: Set if the user has used log priors / log likelihoods
         targeted_acceptance_rate: User defined acceptance rate for the chain
         adaptive_multiplier: Affects the severity of the adaptive width.  
+        optimizer: Decides whether to remove the random number generation for the posterior updater.
         '''
 
         self.initial_parameters = np.array(initial_parameters)
@@ -67,6 +70,11 @@ class MetropolisHastings:
         self.targeted_acceptance_rate = targeted_acceptance_rate
         self.adaptive_delay = adaptive_delay
         self.adaptive_multiplier = adaptive_multiplier
+        self.optimizer = optimizer
+        self.acceptance_array = []
+        self.gamma_array = []
+        self.posterior_array = []
+        self.cholc_array = []
         
     def run(self):
         if self.adaptive == 'Gradient':
@@ -83,7 +91,9 @@ class MetropolisHastings:
         '''
 
         self.gamma = 2.38**2 / np.size(self.initial_parameters) #Looks like slightly smaller sd from Haario.
+        self.gamma_array.append(self.gamma)
         self.cholC = np.diag(self.proposal_move_stds) * self.gamma #Using user proposal stds for intial CholC
+        self.cholc_array.append(self.cholC)
         nvars = np.size(self.initial_parameters)
         for _ in range(self.burn_in):
             initial_posterior = self.generate_posterior(self.initial_parameters)
@@ -106,6 +116,7 @@ class MetropolisHastings:
                         our criteria being 0 ie either the likelihood function or the prior is 0. This appears
                         to make the most sense for now.
                         '''
+                        self.fail = self.fail + 1
                         self.parameter_store.append(self.initial_parameters)
             self.logic(proposed_position, initial_posterior)
 
@@ -123,8 +134,12 @@ class MetropolisHastings:
                 for cri in self.extra_conditions:
                     while cri(proposed_position) == False:
                         proposed_position = self.initial_parameters + (np.matmul(self.cholC.T,
-                                                                         np.random.randn(nvars)))
+                                                                     np.random.randn(nvars)))
                         self.parameter_store.append(self.initial_parameters)
+                        self.fail = self.fail + 1
+                        print("I'm stuck!")
+                        print(proposed_position)
+                        clear_output(wait=True)
             self.logic(proposed_position, initial_posterior)
             count = count + 1
             if self.log_level == 1:
@@ -136,11 +151,13 @@ class MetropolisHastings:
         which should point the acceptance rate to the user defined acceptance rate.
         '''
         self.gamma = self.gamma * (self.adaptive_multiplier ** (self.acceptance - self.targeted_acceptance_rate))
+        self.gamma_array.append(self.gamma)
         epsilon = 1e-10 #Very small number from Haario.
         array_slice = np.array(self.parameter_store)[indicies:]
         covariance = np.cov(array_slice.T)
         #This should be the correct definiton from Haario.
         self.cholC = self.gamma * np.linalg.cholesky(covariance + epsilon * np.eye(np.size(self.initial_parameters)))
+        self.cholc_array.append(self.cholC)
         if self.log_level == 2:
             print(array_slice)
             print(f'Gamma: {self.gamma}')
@@ -248,7 +265,7 @@ class MetropolisHastings:
                 else:
                     num_cols = 1
                     num_rows = n
-            fig, ax = plt.subplots(num_rows, num_cols, sharex = True, figsize = (15, 10))
+            fig, ax = plt.subplots(num_rows, num_cols, sharex = True)
           
         axs = np.array(ax).flatten() # axs numbers from L-R, T-B
         
@@ -367,7 +384,7 @@ class MetropolisHastings:
                 else:
                     num_cols = 1
                     num_rows = n
-            fig, ax = plt.subplots(num_rows, num_cols, figsize = (15, 10))
+            fig, ax = plt.subplots(num_rows, num_cols)
           
         axs = np.array(ax).flatten() # axs numbers from L-R, T-B
         
@@ -391,9 +408,9 @@ class MetropolisHastings:
         else:
             return None, None
 
+
     def plot_corner(self, i = None, n_bins = None, grid = False, 
                     show_ylabel = False, hist_same_scale = False,
-                    remove_burn_in = True,
                     return_fig = False):
         '''
         plots covariances between each histogram
@@ -418,10 +435,7 @@ class MetropolisHastings:
             n_bins = self.epochs/10
             
         parameter_store_by_index = pd.DataFrame(self.parameter_store)
-        
-        if remove_burn_in:
-            parameter_store_by_index = parameter_store_by_index.iloc[self.burn_in:,:]
-        
+    
         fig = corner.corner(parameter_store_by_index, bins = n_bins, 
                             show_titles = False, plot_contours = False,
                             fill_contours = True)
@@ -474,12 +488,22 @@ class MetropolisHastings:
         '''
         Generates the posterior at a given position, given the data and the measurement error.
         '''
-        if not self.model:
-            likelihood = self.likelihood_function(position, self.data,
-                                             self.measurement_error) 
+        if self.model == False or self.model == None:
+            if self.measurement_error == False:
+                likelihood = self.likelihood_function(position[0:-1], self.data,
+                                                      position[-1])
+            
+            else:
+                likelihood = self.likelihood_function(position, self.data,
+                                                 self.measurement_error) 
         else:
-            likelihood = self.likelihood_function(self.model(position), self.data,
-                                              self.measurement_error)
+            if self.measurement_error == False:
+                likelihood = self.likelihood_function(self.model(position[0:-1]), self.data,
+                                                   position[-1])
+                
+            else:
+                likelihood = self.likelihood_function(self.model(position), self.data,
+                                                  self.measurement_error)
         prior = self.prior_function(position, self.prior_means, self.prior_stds)
         if self.log_level == 1:
             print(f"Likelihood: {likelihood}")
@@ -494,42 +518,57 @@ class MetropolisHastings:
            acceptance and rejection, so having the logic separate appears to make sense.
         '''
         proposed_posterior = self.generate_posterior(proposed_position)
-
-        if self.return_MAP:
-            if -np.log(proposed_posterior) < -np.log(initial_posterior):
-                self.MAP = [-np.log(proposed_posterior), proposed_position]
+        if not self.optimizer:
+            if self.return_MAP:
+                if -np.log(proposed_posterior) < -np.log(initial_posterior):
+                    self.MAP = [-np.log(proposed_posterior), proposed_position]
       
-        if not self.logs:
-            criteria = np.exp( np.log(proposed_posterior) - np.log(initial_posterior)) #This is sometimes giving NaNs...
+            if not self.logs:
+                criteria = np.exp( np.log(proposed_posterior) - np.log(initial_posterior)) #This is sometimes giving NaNs...
+                monte_carlo = np.random.uniform()
+      
+            if self.logs:
+                criteria = proposed_posterior - initial_posterior
+                monte_carlo = np.log(np.random.uniform())
+        else:
+            if np.abs(proposed_posterior) > 1e16:
+                criteria = 0
+                
+            elif proposed_posterior >= initial_posterior:
+                criteria = 1
+            else:
+                criteria = 0.005 #May need to be changed
+                
             monte_carlo = np.random.uniform()
-      
-        if self.logs:
-            criteria = proposed_posterior - initial_posterior
-            monte_carlo = np.log(np.random.uniform())
-
+        
         if self.log_level == 1:
             print(f"{proposed_position}")
             print(f"{initial_posterior}")
             print(f"{monte_carlo}")
             print(f"{criteria}")
-
+                
         if monte_carlo > criteria:
             self.initial_parameters = self.initial_parameters
             self.parameter_store.append(self.initial_parameters)
+            self.posterior_array.append(initial_posterior)
             self.fail = self.fail + 1
       
         elif monte_carlo < criteria:
             self.initial_parameters = proposed_position
             self.parameter_store.append(self.initial_parameters)
+            self.posterior_array.append(proposed_posterior)
+            
             self.success = self.success + 1 
 
         else:
             self.initial_parameters = self.initial_parameters
             self.parameter_store.append(self.initial_parameters)
+            self.posterior_array.append(initial_posterior)
             self.fail = self.fail + 1
       
         self.acceptance = self.success / (self.success + self.fail)
-      
+        self.acceptance_array.append(self.acceptance)
+        
         if self.log_level == 1:
             clear_output(wait=True)
             print(f"Parameters: {self.initial_parameters}")
@@ -537,7 +576,7 @@ class MetropolisHastings:
             print(f"Criteria: {criteria}")
             print(f"Monte-Carlo: {monte_carlo}")
       
-    def save(self, file_name = None):        
+    def save(self, file_name = None, full = False):        
         if not file_name:
             file_name = 'MetropolisHastings_' + pd.to_datetime('today').strftime('%Y%m%d-%H%M%S') + '.csv'
         
@@ -545,6 +584,15 @@ class MetropolisHastings:
                                  columns = ['param %d' % i for i in range(len(self.initial_parameters))])
         export_df.to_csv(file_name)
         
+        if full:
+            dicty = {'Posterior':self.posterior_array,
+                    'Params':self.parameter_store,
+                    'Gamma':self.gamma_array,
+                    'Acceptancs':self.acceptance_array}
+            savemat(f"{file_name}_full.mat",dicty)
+        
+        if self.optimizer:
+            savemat(f"{file_name}_Optimizer_files.mat",{'Posterior':self.posterior_array})
         print("Saved to %s" % file_name)
         
     def load_parameter_store(self, file_name):
@@ -716,61 +764,9 @@ class MetropolisHastings:
     
     def get_adaptive_multiplier(self):
         return self.adaptive_multiplier
-
-  
-if __name__ == '__main__':
-    # test program
-    from scipy.stats import norm as normal
     
-    load_from_file = False
+    def set_optimizer(self, optimizer):
+        self.optimizer = optimizer
     
-    print("Initialising")
-    def prior(position,mean,std):
-      meanie = normal(mean[0],std[0]).pdf(position[0])
-      stdie = normal(mean[0],std[0]).pdf(position[1])
-      return meanie*stdie
-    
-    def data(positions):
-      points = np.linspace(1,5,20)
-      return normal(positions[0],positions[1]).pdf(points)
-    
-    def proposal(means, stds):
-      return np.random.normal(means,stds)
-    
-    def likelihood(positions, data, error):
-        return normal(positions[0],1).pdf(data).prod()
-       
-    vals = np.random.normal(3, 1.4, 300)
-    a = MetropolisHastings([2,0.5],
-                           False,
-                           vals,
-                           [prior, [1,1], [2,2]],
-                           [proposal, [0.4,0.3], [0.4,0.3]],
-                           likelihood,
-                           0,
-                           epochs = 300,
-                           burn_in = 50,
-                           adaptive_delay = 1000,
-                           adaptive = False,
-                           logs = False,
-                           targeted_acceptance_rate=0.69,
-                           log_level=1)
-    
-    if load_from_file:
-        file_name = 'MetropolisHastings_20220216-111611.csv'
-        a.load_parameter_store(file_name)
-        
-    else:
-        a.run()
-
-    a.plot_traces(show_markers = False)
-    fig, axs = a.plot_hists(return_fig = True, n_bins = 20)
-
-    # plot trace and histogram on same figure
-    fig, axs = plt.subplots(1, 2, figsize = (15,10))
-    a.plot_traces(0, '', ax = axs[0])
-    a.plot_hists(0, '', ax = axs[1])
-    fig.tight_layout()
-    
-    a.plot_corner(n_bins = 50, grid = False, show_ylabel = False, hist_same_scale = False) # default corner.py behaviour
-    
+    def get_optimizer(self):
+        return self.optimizer
