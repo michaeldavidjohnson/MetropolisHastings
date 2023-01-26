@@ -601,7 +601,6 @@ class MetropolisHastings:
         self.parameter_store = import_df.values
         self.epochs = len(import_df)
         self.initial_parameters = self.parameter_store[0]
-        self.burn_in = 0
         
         print("Loaded")
 
