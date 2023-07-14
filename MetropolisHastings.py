@@ -1,3 +1,4 @@
+
 from IPython.display import clear_output
 import numpy as np
 import matplotlib.pyplot as plt
@@ -123,10 +124,20 @@ class MetropolisHastings:
         #First initial cholesky covariance matrix
         self.covariance_updater(0)
         count = 1 
+        recursive = False
+        
         for _ in range(self.epochs - self.burn_in):
-            if count % self.adaptive_delay == 0:
-                self.covariance_updater((self.burn_in + count) - self.adaptive_delay)
-      
+            
+            if recursive == True:
+                previous_mean = np.mean(a.parameter_store, axis = 0)
+                previous_cholc = self.cholC
+                previous_mean = self.mean_updater_recursive(self.burn_in + count, previous_mean)
+                previous_cholc = self.covariance_updater_recursive(self.burn_in + count, previous_mean)
+            else:
+            
+                if count % self.adaptive_delay == 0:
+                    #self.covariance_updater((self.burn_in + count) - self.adaptive_delay)
+                     self.covariance_updater(0)
             initial_posterior = self.generate_posterior(self.initial_parameters)
             proposed_position = self.initial_parameters + (np.matmul(self.cholC.T, np.random.randn(nvars)))
       
@@ -144,6 +155,19 @@ class MetropolisHastings:
             count = count + 1
             if self.log_level == 1:
                 print(f'Cholesky width: {self.cholC}')
+                
+    
+    
+    def mean_updater_recursive(self, index, previous_mean):
+        t = index - 2
+        mean_new = (t - 1) / t * previous_mean + (1 / t) * (a.parameter_store[t] - previous_mean)
+        return mean_new
+        
+    def covariance_updater_recursive(self, index, previous_mean):
+        t = index - 2
+        epsilon = 1e-10 
+        self.cholC = (t - 1) / t * self.cholC + (self.gamma/t) * (t * (previous_mean @ previous_mean.T) - (t+1)*(previous_mean @ previous_mean.T) + (previous_mean @ previous_mean.T) + epsilon * np.eye(np.size(self.initial_parameters))) 
+        
   
     def covariance_updater(self, indicies):
         '''
@@ -488,6 +512,8 @@ class MetropolisHastings:
         '''
         Generates the posterior at a given position, given the data and the measurement error.
         '''
+        import time
+
         if self.model == False or self.model == None:
             if self.measurement_error == False:
                 likelihood = self.likelihood_function(position[0:-1], self.data,
@@ -497,7 +523,7 @@ class MetropolisHastings:
                 likelihood = self.likelihood_function(position, self.data,
                                                  self.measurement_error) 
         else:
-            if self.measurement_error == False:
+            if type(self.measurement_error) == type(False):
                 likelihood = self.likelihood_function(self.model(position[0:-1]), self.data,
                                                    position[-1])
                 
@@ -505,11 +531,15 @@ class MetropolisHastings:
                 likelihood = self.likelihood_function(self.model(position), self.data,
                                                   self.measurement_error)
         prior = self.prior_function(position, self.prior_means, self.prior_stds)
+
         if self.log_level == 1:
             print(f"Likelihood: {likelihood}")
             print(f"Prior: {prior}")
+        
         if self.logs: #If given the log likelihood and the log of the prior
             return likelihood + prior
+            
+            
         else:
             return likelihood * prior
   
@@ -601,6 +631,7 @@ class MetropolisHastings:
         self.parameter_store = import_df.values
         self.epochs = len(import_df)
         self.initial_parameters = self.parameter_store[0]
+        self.burn_in = 0
         
         print("Loaded")
 
